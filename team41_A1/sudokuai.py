@@ -29,43 +29,34 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
             grid_coords = [square[0] // board.m, square[1] // board.n]
             row_values = [board.get((square[0], c)) for c in range(board.N)]
             col_values = [board.get((r, square[1])) for r in range(board.N)]
-            # board.put((0, 0), 1)
-            # board.put((0, 1), 2)
-            # board.put((0, 2), 3)
-            # board.put((1, 0), 4)
-            
-            # board.put((3, 1), 5)
-            # board.put((3, 2), 6)
-            # board.put((3, 3), 7)
             # check player 
             if game_state.current_player == 1:
-                # We start from the first row
-                board_values = [
+                # We start at the top-left corner
+                block_values = [
                     board.get((r, board.n * grid_coords[1] + c))
                     for r in range(board.m)
                     for c in range(board.n)
                 ]
             else:
-                # We start from the last row
-                board_values = [
+                # We start at the bottom corner
+                block_values = [
                     board.get((board.m * grid_coords[0] + r, c))
                     for r in range(board.m)
                     for c in range(board.n)
                 ]
-            # print("Board values: ", board_values)
             # It shouldn't be in the same row, same column, or same block
-            return value not in row_values and value not in col_values and value not in board_values
+            return value not in row_values and value not in col_values and value not in block_values
 
         def generate_legal_moves(board):
             moves = []
             for i in range(board.N):
                 for j in range(board.N):
-                    if board.get(i, j) == SudokuBoard.empty:
+                    if board.get((i, j)) == SudokuBoard.empty:
                         for value in range(1, board.N + 1):
                             if legal_moves((i, j), value, board):
                                 moves.append(Move((i, j), value))
                                 
-            print("Legal moves: ", moves)
+            # print("Legal moves: ", moves)
             return moves
 
         # scoring for number of completed regions
@@ -102,14 +93,14 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
             completed_regions = compute_completed_regions(board, move.square[0], move.square[1])
             i, j = move.square
             value = move.value
-            new_board = board.copy()
+            new_board = board
             # make move on new board
             new_board.put(i, j, value)
             
             # calculate score for the move
             return regions_score[compute_completed_regions(new_board, i, j) - completed_regions]
         
-        def minimax(grid, depth, alpha, beta, is_maximizing_player):
+        def minimax(grid, depth, alpha, beta, is_maximizing_player, move):
             if depth == 0:
                 return evaluate_move(grid, move)
 
@@ -118,12 +109,12 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
                 for i in range(grid.N):
                     for j in range(grid.N):
                         for value in range(1, grid.N + 1):
+                            new_grid = grid
                             # check if the move is legal
-                            if legal_moves(new_grid, i, j, value):    
-                                new_grid = grid.copy()
-                                new_grid[i][j] = value 
+                            if legal_moves((i, j), value, new_grid):    
+                                new_grid.put((i, j), value)
                                 # recursively call minimax to evaluate the move
-                                eval = minimax(new_grid, depth - 1, alpha, beta, False)
+                                eval = minimax(new_grid, depth - 1, alpha, beta, False, move)
                                 max_eval = max(max_eval, eval)
                                 alpha = max(alpha, eval)
                                 if beta <= alpha:
@@ -135,11 +126,11 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
                 for i in range(grid.N):
                     for j in range(grid.N):
                         for value in range(1, grid.N + 1):
-                            if legal_moves(new_grid, i, j, value):
-                                new_grid = grid.copy()
-                                new_grid[i][j] = value
+                            new_grid = grid
+                            if legal_moves((i, j), value, new_grid):
+                                new_grid.put((i, j), value)
                                 # recursively call minimax to evaluate the move
-                                eval = minimax(new_grid, depth - 1, alpha, beta, True)
+                                eval = minimax(new_grid, depth - 1, alpha, beta, True, move)
                                 min_eval = min(min_eval, eval)
                                 beta = min(beta, eval)
                                 if beta <= alpha:
@@ -148,9 +139,46 @@ class SudokuAI(competitive_sudoku.sudokuai.SudokuAI):
 
         all_moves = [Move((i, j), value) for i in range(N) for j in range(N)
                      for value in range(1, N+1) if legal_moves((i, j), value, game_state.board)]
-        move = random.choice(all_moves)
-        self.propose_move(move)
-        while True:
-            time.sleep(0.2)
-            self.propose_move(random.choice(all_moves))
+        
+        best_move = None
+        alpha = float('-inf')
+        beta = float('+inf')
+        depth = 1
+        
+        while depth <= 15:
+            for move in all_moves:
+                game_state.board.put(move.square, move.value)
+                move_score = minimax(game_state.board, depth - 1, alpha, beta, is_maximizing_player=False, move=move)
+                print("Move: ", move, "Score: ", move_score)
+                game_state.board.put(move.square, SudokuBoard.empty) 
+                
+                if move_score > alpha:
+                    alpha = move_score
+                    best_move = move
+                    # remove the move from the list of all moves
+                    all_moves.remove(move)
+            
+            self.propose_move(best_move)
+            depth += 1
+        # best_move = Move((0, 0), 2)
+        # depth = 1
+        # while depth <= 15:
+        #     alpha = float('-inf')
+        #     beta = float('+inf')
+        #     for i in range(N):
+        #         for j in range(N):
+        #             for value in range(1, N + 1):
+        #                 board = game_state.board
+        #                 # check if move is legal
+        #                 if legal_moves((i, j), value, board):
+        #                     board.put((i, j), value)
+        #                     eval = minimax(board, depth - 1, alpha, beta, False, best_move)
+        #                     if eval > alpha:
+        #                         alpha = eval
+        #                         best_move = Move((i, j), value)
+        #     self.propose_move(best_move)
+        #     depth += 1
+        # while True:
+        #     time.sleep(0.2)
+        #     self.propose_move(random.choice(all_moves))
 
